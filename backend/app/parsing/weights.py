@@ -2,7 +2,10 @@
 '결함도 평가항목'(바닥판/주형/...) 행 하나이며, 그 외 키는 구조형식 경로 -> 가중치 값이다."""
 from __future__ import annotations
 
+import re
+
 _META_KEYS = {"heading", "구분", "결함도 평가항목", "출처"}
+_WEIGHT_PATTERN = re.compile(r"^([0-9]+(?:\.[0-9]+)?)")
 
 
 def parse_weight_table(parsed: dict, year: int, source_path: str) -> list[dict]:
@@ -16,7 +19,14 @@ def parse_weight_table(parsed: dict, year: int, source_path: str) -> list[dict]:
             if key in _META_KEYS:
                 continue
             raw = values[0].strip()
-            weight = None if raw == "-" else float(raw)
+            if raw == "-":
+                weight = None
+            else:
+                match = _WEIGHT_PATTERN.match(raw)
+                if match:
+                    weight = float(match.group(1))
+                else:
+                    weight = None
             rows.append({
                 "year": year,
                 "category": category,
