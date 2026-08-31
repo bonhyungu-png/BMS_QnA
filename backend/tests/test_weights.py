@@ -34,20 +34,21 @@ def test_parses_weight_matrix_and_skips_total_row():
 def test_parses_weight_with_parenthetical_footnote_suffix():
     # 2022~2024년 표1.30/1.31 재료시험(탄산화/염화물) 행은 "2(4)", "4(7)" 형태.
     # 괄호 앞 정수를 가중치로 채택하고 괄호값은 이 범위에서 파싱하지 않는다.
-    text = (
-        "# [표 1.30] 구조형식에 따른 일반교량의 부재별 가중치\n\n"
-        "문서: x\n판본: 안전점검진단_교량@2024\n절: 1.4\n표: 1.30\n면: 24\n\n"
-        "---\n\n"
-        "## 콘크 리트\n\n"
-        "구분: 콘크 리트\n"
-        "결함도 평가항목: 탄산화\n"
-        "슬래브 교량: 2(4)\n"
-        "거더교량 > 일반 거더교 > 일반: -\n"
-        "출처: x\n"
-    )
-    parsed = parse_kv_file(text)
-    rows = parse_weight_table(parsed, year=2024, source_path="x")
+    fixture_2024 = Path(__file__).parent / "fixtures" / "표1_30_2024_각주가중치.md"
+    parsed = parse_kv_file(fixture_2024.read_text(encoding="utf-8"))
+    rows = parse_weight_table(parsed, year=2024, source_path=str(fixture_2024))
+
+    # 슬래브 교량: 2(4) → 2.0
     slab_row = next(r for r in rows if r["structure_type"] == "슬래브 교량")
     assert slab_row["weight"] == 2.0
-    none_row = next(r for r in rows if r["structure_type"] == "거더교량 > 일반 거더교 > 일반")
+
+    # 거더교량 > 일반 거더교 > 바닥판 없음: - → None
+    none_row = next(
+        r for r in rows
+        if r["structure_type"] == "거더교량 > 일반 거더교 > 바닥판 없음"
+    )
     assert none_row["weight"] is None
+
+    # 라멘교 > 거더 없음: 4(7) → 4.0
+    ramen_row = next(r for r in rows if r["structure_type"] == "라멘교 > 거더 없음")
+    assert ramen_row["weight"] == 4.0
