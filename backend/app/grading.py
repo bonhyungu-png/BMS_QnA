@@ -30,6 +30,7 @@ def grade_lookup(
         return {"status": "not_found"}
 
     quant_rows = [r for r in rows if r["criterion_type"] == "quant"]
+    qual_rows = [r for r in rows if r["criterion_type"] == "qual"]
 
     # Check if any quantitative criteria can be applied (i.e., we have measures for them)
     applicable_quant_rows = [r for r in quant_rows if r["parsed_field"] and r["parsed_field"] in measures]
@@ -54,12 +55,21 @@ def grade_lookup(
         if matched:
             worst = max(matched, key=lambda m: m["grade"])
             return {"status": "graded", "grade": worst["grade"], "evidence": matched}
+        # No matches for applicable quant rows
+        # Fall back to qual candidates if available (fix for gap case)
+        if qual_rows:
+            return {
+                "status": "needs_judgment",
+                "candidates": [
+                    {"grade": r["grade"], "criterion_raw": r["criterion_raw"], "table_no": r["table_no"], "page": r["page"]}
+                    for r in qual_rows
+                ],
+            }
+        # No qual fallback, return no_match
         return {
             "status": "no_match",
             "available_fields": sorted({r["parsed_field"] for r in quant_rows if r["parsed_field"]}),
         }
-
-    qual_rows = [r for r in rows if r["criterion_type"] == "qual"]
     if qual_rows:
         return {
             "status": "needs_judgment",
