@@ -46,11 +46,12 @@ def test_changed_criterion_text_is_reported(conn):
         "(2026, '1.4', 't', 'title', '테스트부재', '테스트항목', '', 'b', '균열폭 0.2이상', 'quant', 1, 'x')"
     )
     conn.commit()
-    result = compare_years(conn, member="테스트부재", item="테스트항목", subitem="", years=[2024, 2026])
-    assert "b" in result["changed_grades"]
-    assert result["changed_grades"]["b"][2024] == ["균열폭 0.1이상"]
-    assert result["changed_grades"]["b"][2026] == ["균열폭 0.2이상"]
-
-    # Cleanup: delete synthetic test data
-    conn.execute("DELETE FROM criteria WHERE member='테스트부재' AND item='테스트항목'")
-    conn.commit()
+    try:
+        result = compare_years(conn, member="테스트부재", item="테스트항목", subitem="", years=[2024, 2026])
+        assert "b" in result["changed_grades"]
+        assert result["changed_grades"]["b"][2024] == ["균열폭 0.1이상"]
+        assert result["changed_grades"]["b"][2026] == ["균열폭 0.2이상"]
+    finally:
+        # Cleanup: delete synthetic test data (exception-safe)
+        conn.execute("DELETE FROM criteria WHERE member='테스트부재' AND item='테스트항목' AND source_path='x'")
+        conn.commit()
