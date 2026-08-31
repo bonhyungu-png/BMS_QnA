@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from app.build_db import main as build_main
-from app.aggregate import aggregate_structure_grade
+from app.aggregate import aggregate_structure_grade, aggregate_bridge_grade
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "안전점검진단_교량편"
 
@@ -76,3 +76,29 @@ def test_invalid_grade_letter_raises_clear_error(conn):
 def test_unknown_structure_type_raises_clear_error(conn):
     with pytest.raises(ValueError, match="알 수 없는 구조형식"):
         aggregate_structure_grade(conn, 2026, "존재하지않는구조형식", ALL_MEMBERS)
+
+
+def test_aggregate_bridge_grade_weights_by_span_ratio(conn):
+    structure_results = {
+        "강거더교_구간": {"grade": "A", "converted_score": 0.10},
+        "PSC거더교_구간": {"grade": "C", "converted_score": 0.30},
+    }
+    span_ratios = {"강거더교_구간": 300.0, "PSC거더교_구간": 100.0}  # 연장(m) 비율
+    result = aggregate_bridge_grade(conn, 2026, structure_results, span_ratios)
+
+    expected_score = (0.10 * 300 + 0.30 * 100) / 400  # = 0.15
+    assert result["converted_score"] == pytest.approx(expected_score, abs=1e-6)
+    assert result["grade"] == "B"  # 표1.33: 0.13<=X<0.26
+
+
+def test_critical_defect_structure_overrides_bridge_average(conn):
+    structure_results = {
+        "강거더교_구간": {"grade": "A", "converted_score": 0.10},
+        "PSC거더교_구간": {"grade": "E", "converted_score": 1.00},
+    }
+    span_ratios = {"강거더교_구간": 300.0, "PSC거더교_구간": 100.0}
+    result = aggregate_bridge_grade(
+        conn, 2026, structure_results, span_ratios, critical_defect_structure="PSC거더교_구간",
+    )
+    assert result["grade"] == "E"
+    assert "중대한 결함" in result["reason"]

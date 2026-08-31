@@ -98,3 +98,34 @@ def aggregate_structure_grade(
             result["reason"] = f"중대한 결함 부재({critical_defect_member})의 등급을 우선 적용"
 
     return result
+
+
+def aggregate_bridge_grade(
+    conn: sqlite3.Connection,
+    year: int,
+    structure_results: dict[str, dict],
+    span_ratios: dict[str, float],
+    critical_defect_structure: str | None = None,
+) -> dict:
+    """본교(또는 램프교/접속교/전체 시설물)의 등급을 연장비 가중합으로 산정한다.
+    같은 함수로 ④단계(구조형식들 -> 본교)와 ⑤단계(본교/램프교/접속교 -> 전체)를 모두 처리한다."""
+    total_ratio = sum(span_ratios.values())
+    weighted_sum = sum(
+        structure_results[name]["converted_score"] * ratio
+        for name, ratio in span_ratios.items()
+        if structure_results[name]["converted_score"] is not None
+    )
+    converted_score = weighted_sum / total_ratio if total_ratio else None
+    computed_grade = _grade_for_score(conn, year, converted_score) if converted_score is not None else None
+    result = {"grade": computed_grade, "converted_score": converted_score}
+
+    if critical_defect_structure:
+        critical = structure_results[critical_defect_structure]
+        if critical["converted_score"] is not None and (
+            converted_score is None or critical["converted_score"] > converted_score
+        ):
+            result["grade"] = critical["grade"]
+            result["converted_score"] = critical["converted_score"]
+            result["reason"] = f"중대한 결함 구조형식({critical_defect_structure})의 등급을 우선 적용"
+
+    return result
