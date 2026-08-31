@@ -2,6 +2,8 @@
 LLM은 도구 결과를 인용해 자연어로 설명만 한다."""
 from __future__ import annotations
 
+import contextlib
+
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
 
@@ -22,13 +24,15 @@ def _get_searcher(year: int):
 @tool
 def grade_lookup_tool(member: str, item: str, subitem: str | None, measures: dict[str, float], year: int = 2026) -> dict:
     """부재/평가항목/세부항목과 측정값(예: 균열폭, 균열률)으로 상태평가 등급을 판정한다."""
-    return grade_lookup(_get_conn(), member, item, subitem, measures, year)
+    with contextlib.closing(_get_conn()) as conn:
+        return grade_lookup(conn, member, item, subitem, measures, year)
 
 
 @tool
 def compare_years_tool(member: str, item: str, subitem: str | None, years: list[int]) -> dict:
     """같은 부재/평가항목/세부항목의 판정기준이 연도별로 어떻게 다른지 비교한다."""
-    return compare_years(_get_conn(), member, item, subitem, years)
+    with contextlib.closing(_get_conn()) as conn:
+        return compare_years(conn, member, item, subitem, years)
 
 
 @tool
