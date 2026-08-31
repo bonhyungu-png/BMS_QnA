@@ -1,0 +1,7 @@
+QA/api_key.txt
+backend/api_key.txt
+backend/data/*.db
+*.db
+__pycache__/
+*.pyc
+node_modules/

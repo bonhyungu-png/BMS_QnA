@@ -1,0 +1,6 @@
+langchain
+langchain-anthropic
+langchain-nvidia-ai-endpoints
+langchain-openai
+scikit-learn
+tenacity
