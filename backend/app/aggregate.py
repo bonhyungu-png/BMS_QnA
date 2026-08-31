@@ -52,6 +52,18 @@ def aggregate_structure_grade(
     member_grades: dict[str, str],
     critical_defect_member: str | None = None,
 ) -> dict:
+    # 구조형식 존재 여부 검증 (Finding 3)
+    exists = conn.execute(
+        "SELECT 1 FROM weight_tables WHERE year=? AND structure_type=? LIMIT 1",
+        (year, structure_type),
+    ).fetchone()
+    if exists is None:
+        raise ValueError(f"알 수 없는 구조형식입니다: {structure_type!r} (year={year})")
+
+    # critical_defect_member이 member_grades에 있는지 검증 (Finding 1)
+    if critical_defect_member and critical_defect_member not in member_grades:
+        raise ValueError(f"critical_defect_member이 member_grades에 없습니다: {critical_defect_member!r}")
+
     total_weight = 0.0
     weighted_index_sum = 0.0
     contributions = []
@@ -67,6 +79,9 @@ def aggregate_structure_grade(
         if weight_row is None or weight_row["weight"] is None:
             continue
         idx = _defect_index_for_grade(conn, year, grade)
+        # 유효한 등급인지 검증 (Finding 2)
+        if idx is None:
+            raise ValueError(f"'{member}'의 등급 '{grade}'이 유효한 등급(a~e)이 아닙니다.")
         weighted_index_sum += weight_row["weight"] * idx
         total_weight += weight_row["weight"]
         contributions.append({"member": member, "grade": grade, "weight": weight_row["weight"]})

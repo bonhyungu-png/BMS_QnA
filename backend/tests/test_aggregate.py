@@ -57,3 +57,22 @@ def test_critical_defect_overrides_weighted_average(conn):
 def test_unknown_member_name_raises_clear_error(conn):
     with pytest.raises(ValueError, match="알 수 없는 부재명"):
         aggregate_structure_grade(conn, 2026, STRUCTURE_TYPE, {"없는부재": "a"})
+
+
+def test_critical_defect_member_not_in_member_grades_raises_clear_error(conn):
+    with pytest.raises(ValueError, match="critical_defect_member"):
+        aggregate_structure_grade(
+            conn, 2026, STRUCTURE_TYPE, ALL_MEMBERS, critical_defect_member="없는부재",
+        )
+
+
+def test_invalid_grade_letter_raises_clear_error(conn):
+    grades = dict(ALL_MEMBERS)
+    grades["기초"] = "z"
+    with pytest.raises(ValueError, match="유효한 등급"):
+        aggregate_structure_grade(conn, 2026, STRUCTURE_TYPE, grades)
+
+
+def test_unknown_structure_type_raises_clear_error(conn):
+    with pytest.raises(ValueError, match="알 수 없는 구조형식"):
+        aggregate_structure_grade(conn, 2026, "존재하지않는구조형식", ALL_MEMBERS)
