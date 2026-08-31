@@ -37,3 +37,10 @@ def test_irrelevant_query_returns_empty_or_low_score(conn):
     searcher = TextSearcher(conn, year=2026)
     results = searcher.search("xyz불가능한검색어123")
     assert results == []
+
+
+@pytest.mark.parametrize("query", ["자동차 정비 방법", "김치찌개 레시피 알려줘"])
+def test_unrelated_korean_query_does_not_false_positive(conn, query):
+    searcher = TextSearcher(conn, year=2026)
+    results = searcher.search(query)
+    assert results == []
