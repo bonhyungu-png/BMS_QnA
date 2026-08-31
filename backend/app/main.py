@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import sqlite3
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.grading import grade_lookup
@@ -33,9 +35,16 @@ def get_searcher(year: int) -> TextSearcher:
 
 app = FastAPI(title="교량편 QnA API")
 
+# 로컬 개발(vite dev, :5173)은 항상 허용. 프론트를 백엔드와 별도 오리진에 배포하는
+# 경우에만 FRONTEND_ORIGIN 환경변수로 그 주소를 추가로 허용한다(같은 오리진에서
+# 정적 파일로 서빙하는 기본 배포 방식에서는 이 값이 필요 없다).
+_allowed_origins = ["http://localhost:5173"]
+if os.environ.get("FRONTEND_ORIGIN"):
+    _allowed_origins.append(os.environ["FRONTEND_ORIGIN"])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=_allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -144,3 +153,11 @@ def api_chat(req: ChatRequest):
     llm = build_llm(load_config())
     answer = run_chat(llm, req.message)
     return {"answer": answer}
+
+
+# 배포용: `npm run build`로 만든 프론트엔드 정적 파일을 같은 서버에서 서빙한다.
+# 로컬 개발(vite dev, :5173)에서는 이 디렉터리가 없으므로 아무 것도 마운트하지 않는다
+# (API 라우트들보다 뒤에서 "/"를 잡아야 위 엔드포인트들과 경로가 겹치지 않는다).
+_FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+if _FRONTEND_DIST.is_dir():
+    app.mount("/", StaticFiles(directory=str(_FRONTEND_DIST), html=True), name="frontend")

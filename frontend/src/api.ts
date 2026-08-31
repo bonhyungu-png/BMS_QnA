@@ -1,5 +1,7 @@
 // frontend/src/api.ts
-const API_BASE = "http://localhost:8000";
+// 배포 빌드(import.meta.env.PROD)에서는 백엔드가 이 정적 파일을 같은 오리진에서
+// 서빙하므로 상대경로("")를 쓰고, 로컬 개발(vite dev, :5173)에서만 :8000을 가리킨다.
+const API_BASE = import.meta.env.PROD ? "" : "http://localhost:8000";
 
 export async function sendChat(message: string): Promise<string> {
   const res = await fetch(`${API_BASE}/chat`, {

@@ -1,6 +1,10 @@
-"""api_key.txt에서 provider/model/key를 읽는다. QA/qna.py의 로직을 그대로 이식했다."""
+"""api_key.txt에서 provider/model/key를 읽는다. QA/qna.py의 로직을 그대로 이식했다.
+
+배포 환경(예: Render)에서는 api_key.txt를 git에 커밋하는 대신 환경변수로 키를
+주입할 수 있다 — BRIDGE_QNA_API_KEY가 설정되어 있으면 파일보다 우선한다."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 API_KEY_FILE = Path(__file__).resolve().parent.parent / "api_key.txt"
@@ -21,6 +25,19 @@ def detect_provider(key: str) -> str:
 
 
 def load_config() -> dict:
+    env_key = os.environ.get("BRIDGE_QNA_API_KEY")
+    if env_key:
+        config: dict = {
+            "key": env_key,
+            "provider": os.environ.get("BRIDGE_QNA_PROVIDER") or None,
+            "model": os.environ.get("BRIDGE_QNA_MODEL") or None,
+        }
+        if not config["provider"]:
+            config["provider"] = detect_provider(config["key"])
+        if not config["model"]:
+            config["model"] = DEFAULT_MODEL_BY_PROVIDER.get(config["provider"])
+        return config
+
     if not API_KEY_FILE.exists():
         raise FileNotFoundError(f"{API_KEY_FILE} 파일이 없습니다.")
 
