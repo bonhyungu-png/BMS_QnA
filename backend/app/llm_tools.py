@@ -7,17 +7,16 @@ import contextlib
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
 
+from app.conn import get_conn, get_searcher
 from app.grading import grade_lookup
 from app.compare import compare_years
 
 
 def _get_conn():
-    from app.main import get_conn
     return get_conn()
 
 
 def _get_searcher(year: int):
-    from app.main import get_searcher
     return get_searcher(year)
 
 
