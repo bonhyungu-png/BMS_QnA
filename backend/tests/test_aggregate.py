@@ -50,7 +50,10 @@ def test_critical_defect_overrides_weighted_average(conn):
     result = aggregate_structure_grade(
         conn, 2026, STRUCTURE_TYPE, grades, critical_defect_member="기초",
     )
-    assert result["grade"] == "e"  # 가중평균(C)보다 중대결함 부재의 e가 더 나쁘므로 그대로 채택
+    # 가중평균(C)보다 중대결함 부재의 e가 더 나쁘므로 그대로 채택하되, defect_score.grade와
+    # 일관되게 대문자로 정규화되어야 한다 (member_grades는 소문자 관례를 따르지만
+    # 정상 경로의 computed_grade는 항상 대문자이므로 override 경로도 대문자여야 함).
+    assert result["grade"] == "E"
     assert "중대한 결함" in result["reason"]
 
 
@@ -118,3 +121,69 @@ def test_span_ratio_key_missing_from_structure_results_raises_clear_error(conn):
     span_ratios = {"강거더교_구간": 300.0, "없는구간": 100.0}
     with pytest.raises(ValueError, match="없는구간"):
         aggregate_bridge_grade(conn, 2026, structure_results, span_ratios)
+
+
+# --- Finding 2: None converted_score는 span_ratio 분모에서도 제외되어야 한다 ---
+
+def test_none_converted_score_structure_is_excluded_from_ratio_not_diluted(conn):
+    structure_results = {
+        "미상_구간": {"grade": None, "converted_score": None},
+        "PSC거더교_구간": {"grade": "C", "converted_score": 0.30},
+    }
+    span_ratios = {"미상_구간": 100.0, "PSC거더교_구간": 100.0}  # 연장비 50:50
+    result = aggregate_bridge_grade(conn, 2026, structure_results, span_ratios)
+
+    # 미상 구간이 분모에도 함께 포함되면 (0*100 + 0.30*100)/200 = 0.15로 희석되지만,
+    # 올바르게는 미상 구간을 분모/분자 모두에서 제외해 실제 구조형식의 점수(0.30)만 남아야 한다.
+    assert result["converted_score"] == pytest.approx(0.30, abs=1e-6)
+    assert result["grade"] == "C"
+
+
+def test_all_none_converted_score_yields_none_grade(conn):
+    structure_results = {"미상_구간": {"grade": None, "converted_score": None}}
+    span_ratios = {"미상_구간": 100.0}
+    result = aggregate_bridge_grade(conn, 2026, structure_results, span_ratios)
+    assert result["converted_score"] is None
+    assert result["grade"] is None
+
+
+# --- Finding 3: 새로 추가된 MEMBER_TO_DEFECT_ITEM 매핑이 실제 DB 가중치와 맞아야 한다 ---
+
+CABLE_STRUCTURE_TYPE = "사장교 > 일반 거더형"
+
+
+def test_cable_member_mapping_resolves_against_real_weight_row(conn):
+    result = aggregate_structure_grade(
+        conn, 2026, CABLE_STRUCTURE_TYPE, {"케이블부재": "a"},
+    )
+    assert result["converted_score"] is not None
+    assert result["grade"] is not None
+    assert result["contributions"][0]["member"] == "케이블부재"
+
+
+# --- Finding 7a: critical_defect_member의 가중치가 없으면 명확한 오류를 내야 한다 ---
+
+def test_critical_defect_member_with_no_weight_row_raises_clear_error(conn):
+    # STRUCTURE_TYPE(일반 거더교)에는 '케이블' 가중치 항목이 없으므로, 케이블부재를
+    # critical_defect_member로 지정하면 가중치 조회가 실패한다. 이 경우 조용히 무시하고
+    # 넘어가서는 안 되고 명확한 오류를 내야 한다.
+    grades = dict(ALL_MEMBERS)
+    grades["케이블부재"] = "e"
+    with pytest.raises(ValueError, match="critical_defect_member"):
+        aggregate_structure_grade(
+            conn, 2026, STRUCTURE_TYPE, grades, critical_defect_member="케이블부재",
+        )
+
+
+# --- Finding 7b: critical_defect_structure 항목에 'grade' 키가 없으면 명확한 오류를 내야 한다 ---
+
+def test_critical_defect_structure_missing_grade_key_raises_clear_error(conn):
+    structure_results = {
+        "강거더교_구간": {"grade": "A", "converted_score": 0.10},
+        "PSC거더교_구간": {"converted_score": 1.00},  # 'grade' 키 누락
+    }
+    span_ratios = {"강거더교_구간": 300.0, "PSC거더교_구간": 100.0}
+    with pytest.raises(ValueError, match="'grade'"):
+        aggregate_bridge_grade(
+            conn, 2026, structure_results, span_ratios, critical_defect_structure="PSC거더교_구간",
+        )

@@ -1,6 +1,7 @@
 """FastAPI 앱: grade/aggregate/compare/search 엔드포인트."""
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 from pathlib import Path
 
@@ -25,7 +26,8 @@ def get_conn() -> sqlite3.Connection:
 
 def get_searcher(year: int) -> TextSearcher:
     if year not in _searcher_cache:
-        _searcher_cache[year] = TextSearcher(get_conn(), year=year)
+        with contextlib.closing(get_conn()) as conn:
+            _searcher_cache[year] = TextSearcher(conn, year=year)
     return _searcher_cache[year]
 
 
@@ -49,7 +51,8 @@ class GradeRequest(BaseModel):
 
 @app.post("/inspection/grade")
 def api_grade(req: GradeRequest):
-    return grade_lookup(get_conn(), req.member, req.item, req.subitem, req.measures, req.year)
+    with contextlib.closing(get_conn()) as conn:
+        return grade_lookup(conn, req.member, req.item, req.subitem, req.measures, req.year)
 
 
 class AggregateStructureRequest(BaseModel):
@@ -62,9 +65,10 @@ class AggregateStructureRequest(BaseModel):
 @app.post("/inspection/aggregate-structure")
 def api_aggregate_structure(req: AggregateStructureRequest):
     try:
-        return aggregate_structure_grade(
-            get_conn(), req.year, req.structure_type, req.member_grades, req.critical_defect_member,
-        )
+        with contextlib.closing(get_conn()) as conn:
+            return aggregate_structure_grade(
+                conn, req.year, req.structure_type, req.member_grades, req.critical_defect_member,
+            )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -79,39 +83,40 @@ class AggregateBridgeRequest(BaseModel):
 @app.post("/inspection/aggregate-bridge")
 def api_aggregate_bridge(req: AggregateBridgeRequest):
     try:
-        return aggregate_bridge_grade(
-            get_conn(), req.year, req.structure_results, req.span_ratios, req.critical_defect_structure,
-        )
+        with contextlib.closing(get_conn()) as conn:
+            return aggregate_bridge_grade(
+                conn, req.year, req.structure_results, req.span_ratios, req.critical_defect_structure,
+            )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/inspection/schema")
 def api_schema(year: int = 2026):
-    conn = get_conn()
-    cur = conn.execute(
-        "SELECT DISTINCT member, item, subitem FROM criteria WHERE year=? ORDER BY member, item, subitem",
-        (year,),
-    )
-    return [dict(r) for r in cur.fetchall()]
+    with contextlib.closing(get_conn()) as conn:
+        cur = conn.execute(
+            "SELECT DISTINCT member, item, subitem FROM criteria WHERE year=? ORDER BY member, item, subitem",
+            (year,),
+        )
+        return [dict(r) for r in cur.fetchall()]
 
 
 @app.get("/inspection/fields")
 def api_fields(member: str, item: str, subitem: str = "", year: int = 2026):
-    conn = get_conn()
-    cur = conn.execute(
-        "SELECT DISTINCT parsed_field, parsed_unit FROM criteria "
-        "WHERE year=? AND member=? AND item=? AND subitem=? AND criterion_type='quant'",
-        (year, member, item, subitem),
-    )
-    return [dict(r) for r in cur.fetchall()]
+    with contextlib.closing(get_conn()) as conn:
+        cur = conn.execute(
+            "SELECT DISTINCT parsed_field, parsed_unit FROM criteria "
+            "WHERE year=? AND member=? AND item=? AND subitem=? AND criterion_type='quant'",
+            (year, member, item, subitem),
+        )
+        return [dict(r) for r in cur.fetchall()]
 
 
 @app.get("/compare")
 def api_compare(member: str, item: str, subitem: str = "", years: str = "2022,2023,2024,2026"):
-    conn = get_conn()
     year_list = [int(y) for y in years.split(",")]
-    result = compare_years(conn, member, item, subitem, year_list)
+    with contextlib.closing(get_conn()) as conn:
+        result = compare_years(conn, member, item, subitem, year_list)
     return {
         "by_year": {str(y): rows for y, rows in result["by_year"].items()},
         "changed_grades": {

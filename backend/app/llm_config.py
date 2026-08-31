@@ -45,14 +45,31 @@ def load_config() -> dict:
 
 
 def build_llm(config: dict):
+    """provider별 LangChain LLM 객체를 생성한다.
+
+    nvidia/openai는 requirements.txt에 포함되지 않은 선택적(optional) 의존성이다
+    (langchain/langchain-anthropic만 필수 의존성). 이 환경에는 두 패키지가 모두 설치되어
+    있어 정상 동작하지만, 설치되어 있지 않은 다른 환경에서는 raw ModuleNotFoundError 대신
+    무엇을 설치해야 하는지 알려주는 명확한 ValueError로 우아하게 실패(graceful degradation)한다.
+    """
     provider = config["provider"]
     if provider == "anthropic":
         from langchain_anthropic import ChatAnthropic
         return ChatAnthropic(model=config["model"], api_key=config["key"], max_tokens=2048)
     elif provider == "nvidia":
-        from langchain_nvidia_ai_endpoints import ChatNVIDIA
+        try:
+            from langchain_nvidia_ai_endpoints import ChatNVIDIA
+        except ImportError as e:
+            raise ValueError(
+                "provider='nvidia'를 쓰려면 pip install langchain-nvidia-ai-endpoints 가 필요합니다."
+            ) from e
         return ChatNVIDIA(model=config["model"], api_key=config["key"], timeout=120)
     elif provider == "openai":
-        from langchain_openai import ChatOpenAI
+        try:
+            from langchain_openai import ChatOpenAI
+        except ImportError as e:
+            raise ValueError(
+                "provider='openai'를 쓰려면 pip install langchain-openai 가 필요합니다."
+            ) from e
         return ChatOpenAI(model=config["model"], api_key=config["key"])
     raise ValueError(f"지원하지 않는 provider입니다: {provider}")

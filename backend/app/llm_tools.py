@@ -2,7 +2,7 @@
 LLM은 도구 결과를 인용해 자연어로 설명만 한다."""
 from __future__ import annotations
 
-from langchain_core.messages import HumanMessage, ToolMessage
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
 
 from app.grading import grade_lookup
@@ -48,13 +48,20 @@ SYSTEM_PROMPT = (
 )
 
 
+MAX_TOOL_ITERATIONS = 8
+TOOL_LIMIT_MESSAGE = "죄송합니다. 도구 호출 횟수 제한에 도달했습니다. 질문을 더 구체적으로 다시 시도해주세요."
+
+
 def run_chat(llm, message: str) -> str:
     llm_with_tools = llm.bind_tools(TOOLS)
-    messages = [HumanMessage(content=f"{SYSTEM_PROMPT}\n\n질문: {message}")]
+    messages = [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=message)]
     response = llm_with_tools.invoke(messages)
     messages.append(response)
 
+    iterations = 0
     while response.tool_calls:
+        if iterations >= MAX_TOOL_ITERATIONS:
+            return TOOL_LIMIT_MESSAGE
         for call in response.tool_calls:
             if call["name"] not in TOOLS_BY_NAME:
                 error_msg = f"오류: 알 수 없는 도구 '{call['name']}'"
@@ -64,5 +71,6 @@ def run_chat(llm, message: str) -> str:
                 messages.append(ToolMessage(content=str(result), tool_call_id=call["id"]))
         response = llm_with_tools.invoke(messages)
         messages.append(response)
+        iterations += 1
 
     return response.content

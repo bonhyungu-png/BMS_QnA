@@ -1,6 +1,6 @@
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, SystemMessage
 
-from app.llm_tools import run_chat, TOOLS_BY_NAME
+from app.llm_tools import run_chat, TOOLS_BY_NAME, MAX_TOOL_ITERATIONS, TOOL_LIMIT_MESSAGE
 
 
 class _FakeLLMWithTools:
@@ -118,3 +118,65 @@ def test_run_chat_handles_unknown_tool_name_gracefully(monkeypatch):
     answer = run_chat(llm, "존재하지 않는 도구를 호출해보세요")
 
     assert answer == "죄송하지만 해당 도구를 찾을 수 없습니다."
+
+
+def test_run_chat_caps_infinite_tool_call_loop(monkeypatch):
+    """모델이 tool_calls를 계속 반환해 절대 수렴하지 않아도, run_chat은 최대
+    MAX_TOOL_ITERATIONS 라운드 후 안내 메시지를 반환하며 멈춰야 한다 (무한 루프 금지)."""
+
+    def fake_search_invoke(args):
+        return [{"text": "결과", "page": 1}]
+
+    monkeypatch.setitem(TOOLS_BY_NAME, "search_text_tool", type(
+        "T", (), {"invoke": staticmethod(fake_search_invoke)},
+    )())
+
+    def make_tool_call_response(i):
+        return AIMessage(
+            content="",
+            tool_calls=[{
+                "name": "search_text_tool",
+                "args": {"query": f"질문{i}", "section": "", "year": 2026},
+                "id": f"call_{i}",
+            }],
+        )
+
+    # 테스트 프로세스 자체가 무한 루프에 빠지지 않도록, 필요한 라운드 수보다 약간만 더 준비한다.
+    # run_chat이 cap을 지키지 않으면 이 목록이 바닥나 IndexError로 실패한다(무한 루프 대신).
+    responses = [make_tool_call_response(i) for i in range(MAX_TOOL_ITERATIONS + 2)]
+
+    llm = _FakeLLM(responses)
+    answer = run_chat(llm, "끝나지 않는 질문")
+
+    assert answer == TOOL_LIMIT_MESSAGE
+
+
+def test_run_chat_sends_system_prompt_as_system_message(monkeypatch):
+    """SYSTEM_PROMPT는 HumanMessage에 섞어 보내지 않고 SystemMessage로 별도 전달되어야 한다."""
+    captured_messages = {}
+
+    class _CapturingBoundLLM:
+        def __init__(self, responses):
+            self._responses = list(responses)
+
+        def invoke(self, messages):
+            if "first" not in captured_messages:
+                captured_messages["first"] = list(messages)
+            return self._responses.pop(0)
+
+    class _CapturingLLM:
+        def __init__(self, responses):
+            self._responses = responses
+
+        def bind_tools(self, tools):
+            return _CapturingBoundLLM(self._responses)
+
+    final_response = AIMessage(content="답변입니다.", tool_calls=[])
+    llm = _CapturingLLM([final_response])
+    answer = run_chat(llm, "질문 내용")
+
+    assert answer == "답변입니다."
+    first_messages = captured_messages["first"]
+    assert isinstance(first_messages[0], SystemMessage)
+    assert "질문 내용" not in first_messages[0].content
+    assert first_messages[1].content == "질문 내용"

@@ -26,6 +26,7 @@ export async function gradeLookup(payload: GradeRequest) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  if (!res.ok) throw new Error(`등급 조회 실패: ${res.status}`);
   return res.json();
 }
 
@@ -37,6 +38,7 @@ export interface SchemaRow {
 
 export async function fetchSchema(year = 2026): Promise<SchemaRow[]> {
   const res = await fetch(`${API_BASE}/inspection/schema?year=${year}`);
+  if (!res.ok) throw new Error(`기준표 조회 실패: ${res.status}`);
   return res.json();
 }
 
@@ -50,6 +52,7 @@ export async function fetchFields(
 ): Promise<FieldRow[]> {
   const params = new URLSearchParams({ member, item, subitem, year: String(year) });
   const res = await fetch(`${API_BASE}/inspection/fields?${params}`);
+  if (!res.ok) throw new Error(`입력항목 조회 실패: ${res.status}`);
   return res.json();
 }
 
@@ -66,5 +69,6 @@ export async function aggregateStructure(payload: AggregateStructureRequest) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  if (!res.ok) throw new Error(`전체 등급 계산 실패: ${res.status}`);
   return res.json();
 }

@@ -12,6 +12,7 @@ interface RowState {
   measures: Record<string, string>;
   fields: FieldRow[];
   result: any;
+  error?: string;
 }
 
 export function InspectionSheet() {
@@ -19,6 +20,7 @@ export function InspectionSheet() {
   const [rows, setRows] = useState<RowState[]>([]);
   const [structureType, setStructureType] = useState("거더교량 > 일반 거더교 > 일반");
   const [aggregateResult, setAggregateResult] = useState<any>(null);
+  const [aggregateError, setAggregateError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchSchema(2026).then(setSchema);
@@ -34,11 +36,17 @@ export function InspectionSheet() {
       measures: {}, fields: [], result: null,
     };
     setRows((prev) => [...prev, newRow]);
-    fetchFields(member, first.item, first.subitem).then((fields) => {
-      setRows((prev) =>
-        prev.map((r) => (r === newRow ? { ...r, fields } : r)),
-      );
-    });
+    fetchFields(member, first.item, first.subitem)
+      .then((fields) => {
+        setRows((prev) =>
+          prev.map((r) => (r === newRow ? { ...r, fields, error: undefined } : r)),
+        );
+      })
+      .catch((err) => {
+        setRows((prev) =>
+          prev.map((r) => (r === newRow ? { ...r, error: err instanceof Error ? err.message : String(err) } : r)),
+        );
+      });
   }
 
   async function runGrade(index: number) {
@@ -48,8 +56,14 @@ export function InspectionSheet() {
       const num = parseFloat(v);
       if (!Number.isNaN(num)) measures[k] = num;
     }
-    const result = await gradeLookup({ member: row.member, item: row.item, subitem: row.subitem, measures });
-    setRows((prev) => prev.map((r, i) => (i === index ? { ...r, result } : r)));
+    try {
+      const result = await gradeLookup({ member: row.member, item: row.item, subitem: row.subitem, measures });
+      setRows((prev) => prev.map((r, i) => (i === index ? { ...r, result, error: undefined } : r)));
+    } catch (err) {
+      setRows((prev) =>
+        prev.map((r, i) => (i === index ? { ...r, error: err instanceof Error ? err.message : String(err) } : r)),
+      );
+    }
   }
 
   async function runAggregate() {
@@ -57,8 +71,14 @@ export function InspectionSheet() {
     for (const row of rows) {
       if (row.result?.grade) memberGrades[row.member] = row.result.grade;
     }
-    const result = await aggregateStructure({ structure_type: structureType, member_grades: memberGrades });
-    setAggregateResult(result);
+    try {
+      const result = await aggregateStructure({ structure_type: structureType, member_grades: memberGrades });
+      setAggregateResult(result);
+      setAggregateError(null);
+    } catch (err) {
+      setAggregateResult(null);
+      setAggregateError(err instanceof Error ? err.message : String(err));
+    }
   }
 
   return (
@@ -94,6 +114,7 @@ export function InspectionSheet() {
               {row.result.status === "no_match" && "구간 불일치"}
             </span>
           )}
+          {row.error && <span className="error">오류: {row.error}</span>}
         </div>
       ))}
 
@@ -108,6 +129,7 @@ export function InspectionSheet() {
           환산 결함도 점수: {aggregateResult.converted_score?.toFixed(4)} → 등급: {aggregateResult.grade}
         </div>
       )}
+      {aggregateError && <div className="aggregate-error">오류: {aggregateError}</div>}
     </div>
   );
 }
