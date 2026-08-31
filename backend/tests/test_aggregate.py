@@ -102,3 +102,19 @@ def test_critical_defect_structure_overrides_bridge_average(conn):
     )
     assert result["grade"] == "E"
     assert "중대한 결함" in result["reason"]
+
+
+def test_critical_defect_structure_not_in_structure_results_raises_clear_error(conn):
+    structure_results = {"강거더교_구간": {"grade": "A", "converted_score": 0.10}}
+    span_ratios = {"강거더교_구간": 300.0}
+    with pytest.raises(ValueError, match="critical_defect_structure"):
+        aggregate_bridge_grade(
+            conn, 2026, structure_results, span_ratios, critical_defect_structure="없는구간",
+        )
+
+
+def test_span_ratio_key_missing_from_structure_results_raises_clear_error(conn):
+    structure_results = {"강거더교_구간": {"grade": "A", "converted_score": 0.10}}
+    span_ratios = {"강거더교_구간": 300.0, "없는구간": 100.0}
+    with pytest.raises(ValueError, match="없는구간"):
+        aggregate_bridge_grade(conn, 2026, structure_results, span_ratios)

@@ -109,6 +109,17 @@ def aggregate_bridge_grade(
 ) -> dict:
     """본교(또는 램프교/접속교/전체 시설물)의 등급을 연장비 가중합으로 산정한다.
     같은 함수로 ④단계(구조형식들 -> 본교)와 ⑤단계(본교/램프교/접속교 -> 전체)를 모두 처리한다."""
+    # critical_defect_structure이 structure_results에 있는지 검증 (Finding 1)
+    if critical_defect_structure and critical_defect_structure not in structure_results:
+        raise ValueError(f"critical_defect_structure이 structure_results에 없습니다: {critical_defect_structure!r}")
+
+    # span_ratios의 모든 키가 structure_results에 있는지 검증 (Finding 2)
+    for name in span_ratios:
+        if name not in structure_results:
+            raise ValueError(f"span_ratios의 '{name}'이 structure_results에 없습니다.")
+        if "converted_score" not in structure_results[name]:
+            raise ValueError(f"structure_results['{name}']에 'converted_score' 키가 없습니다.")
+
     total_ratio = sum(span_ratios.values())
     weighted_sum = sum(
         structure_results[name]["converted_score"] * ratio
