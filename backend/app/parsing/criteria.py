@@ -26,7 +26,7 @@ _UNIT = r"㎜|mm|%|kg/m3|kg|kN|m3"
 _NUM = r"(?<!/)[0-9]+(?:\.[0-9]+)?"
 
 _RANGE_PATTERN = re.compile(
-    rf"(?P<min>{_NUM})\s*(?P<unit1>{_UNIT})?\s*이상\s*[～~]\s*"
+    rf"(?P<min>{_NUM})\s*(?P<unit1>{_UNIT})?\s*이상\s*[～~]?\s*"
     rf"(?P<max>{_NUM})\s*(?P<unit2>{_UNIT})?\s*미만"
 )
 _GE_PATTERN = re.compile(rf"(?P<val>{_NUM})\s*(?P<unit>{_UNIT})?\s*이상(?!\s*[～~])")
@@ -36,8 +36,8 @@ _FIELD_PREFIX = re.compile(r"^([^\d]+?)\s*[0-9]")
 _SF_RANGE_PATTERN = re.compile(
     rf"(?P<min>{_NUM})\s*(?P<minop>[≤<])\s*SF\s*(?P<maxop><)\s*(?P<max>{_NUM})"
 )
-_SF_CMP_PATTERN = re.compile(rf"SF\s*(?P<op>[>≥])\s*(?P<val>{_NUM})")
-_SF_OP_MAP = {"≤": ">=", "≥": ">=", "<": "<", ">": ">"}
+_SF_CMP_PATTERN = re.compile(rf"SF\s*(?P<op>[<>≥])\s*(?P<val>{_NUM})")
+_SF_OP_MAP = {"≤": ">=", "≥": ">=", ">": ">"}
 
 
 def parse_criterion_text(text: str) -> ParsedCriterion | None:
@@ -58,14 +58,27 @@ def parse_criterion_text(text: str) -> ParsedCriterion | None:
 
     m = _SF_CMP_PATTERN.search(text)
     if m:
-        return ParsedCriterion(
-            field="SF",
-            min_value=float(m.group("val")),
-            min_op=_SF_OP_MAP[m.group("op")],
-            max_value=None,
-            max_op=None,
-            unit=None,
-        )
+        op = m.group("op")
+        if op == "<":
+            # SF < value is an upper bound
+            return ParsedCriterion(
+                field="SF",
+                min_value=None,
+                min_op=None,
+                max_value=float(m.group("val")),
+                max_op="<",
+                unit=None,
+            )
+        else:
+            # SF > value or SF ≥ value is a lower bound
+            return ParsedCriterion(
+                field="SF",
+                min_value=float(m.group("val")),
+                min_op=_SF_OP_MAP[op],
+                max_value=None,
+                max_op=None,
+                unit=None,
+            )
 
     field_match = _FIELD_PREFIX.match(text)
     field = field_match.group(1).strip() if field_match else None

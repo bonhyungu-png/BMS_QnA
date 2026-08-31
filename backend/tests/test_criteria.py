@@ -64,6 +64,23 @@ def test_none_and_dash_are_not_quant():
     assert parse_criterion_text("-") is None
 
 
+def test_parses_range_separated_by_space_instead_of_tilde():
+    r = parse_criterion_text("표면손상 면적 2% 이상 10% 미만")
+    assert r is not None
+    assert r.field == "표면손상 면적"
+    assert r.min_value == 2 and r.min_op == ">="
+    assert r.max_value == 10 and r.max_op == "<"
+    assert r.unit == "%"
+
+
+def test_parses_safety_factor_lt():
+    r = parse_criterion_text("SF < 0.75")
+    assert r is not None
+    assert r.field == "SF"
+    assert r.max_value == 0.75 and r.max_op == "<"
+    assert r.min_value is None
+
+
 FIXTURE = Path(__file__).parent / "fixtures" / "표1_11_콘크리트_바닥판.md"
 
 
