@@ -8,13 +8,26 @@ _META_KEYS = {"heading", "구분", "결함도 평가항목", "출처"}
 _WEIGHT_PATTERN = re.compile(r"^([0-9]+(?:\.[0-9]+)?)")
 
 
+def _resolve_defect_item(values: list) -> str | None:
+    """'결함도 평가항목' 키는 정상 블록에서는 같은 값이 중복 기재되지만(예: '바닥판'/'바닥판'),
+    2022~2024 표1.30/1.31의 콘크리트(탄산화/염화물) 블록에서는 서로 다른 두 값이 기재된다
+    (예: '탄산화'/'상부', '탄산화'/'하부'). 후자는 두 값을 결합해 상부/하부를 구분할 수 있는
+    라벨을 만든다; 값이 동일하거나 하나뿐이면 그대로 첫 값을 사용한다."""
+    if not values:
+        return None
+    first = values[0]
+    if len(values) > 1 and values[1] and values[1] != first:
+        return f"{first}/{values[1]}"
+    return first
+
+
 def parse_weight_table(parsed: dict, year: int, source_path: str) -> list[dict]:
     rows: list[dict] = []
     for block in parsed["blocks"]:
         category = (block.get("구분") or [None])[0]
         if category == "합계":
             continue
-        defect_item = (block.get("결함도 평가항목") or [None])[0]
+        defect_item = _resolve_defect_item(block.get("결함도 평가항목") or [None])
         for key, values in block.items():
             if key in _META_KEYS:
                 continue
