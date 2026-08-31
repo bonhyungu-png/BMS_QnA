@@ -56,8 +56,12 @@ def run_chat(llm, message: str) -> str:
 
     while response.tool_calls:
         for call in response.tool_calls:
-            result = TOOLS_BY_NAME[call["name"]].invoke(call["args"])
-            messages.append(ToolMessage(content=str(result), tool_call_id=call["id"]))
+            if call["name"] not in TOOLS_BY_NAME:
+                error_msg = f"오류: 알 수 없는 도구 '{call['name']}'"
+                messages.append(ToolMessage(content=error_msg, tool_call_id=call["id"]))
+            else:
+                result = TOOLS_BY_NAME[call["name"]].invoke(call["args"])
+                messages.append(ToolMessage(content=str(result), tool_call_id=call["id"]))
         response = llm_with_tools.invoke(messages)
         messages.append(response)
 
