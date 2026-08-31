@@ -4,7 +4,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from app.grading import grade_lookup
@@ -53,9 +53,12 @@ class AggregateStructureRequest(BaseModel):
 
 @app.post("/inspection/aggregate-structure")
 def api_aggregate_structure(req: AggregateStructureRequest):
-    return aggregate_structure_grade(
-        get_conn(), req.year, req.structure_type, req.member_grades, req.critical_defect_member,
-    )
+    try:
+        return aggregate_structure_grade(
+            get_conn(), req.year, req.structure_type, req.member_grades, req.critical_defect_member,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 class AggregateBridgeRequest(BaseModel):
@@ -67,9 +70,12 @@ class AggregateBridgeRequest(BaseModel):
 
 @app.post("/inspection/aggregate-bridge")
 def api_aggregate_bridge(req: AggregateBridgeRequest):
-    return aggregate_bridge_grade(
-        get_conn(), req.year, req.structure_results, req.span_ratios, req.critical_defect_structure,
-    )
+    try:
+        return aggregate_bridge_grade(
+            get_conn(), req.year, req.structure_results, req.span_ratios, req.critical_defect_structure,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/inspection/schema")

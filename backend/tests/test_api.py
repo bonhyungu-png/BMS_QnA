@@ -57,3 +57,53 @@ def test_search_endpoint(client):
     resp = client.get("/search", params={"q": "특수교는 어떤 교량인가", "year": 2026})
     assert resp.status_code == 200
     assert len(resp.json()) > 0
+
+
+def test_aggregate_structure_unknown_structure_type_returns_400(client):
+    """aggregate_structure_grade raises ValueError on unknown structure_type -> HTTP 400"""
+    resp = client.post("/inspection/aggregate-structure", json={
+        "year": 2026,
+        "structure_type": "unknown_type_that_does_not_exist",
+        "member_grades": {"콘크리트 바닥판": "a"},
+    })
+    assert resp.status_code == 400
+    body = resp.json()
+    assert "detail" in body
+    # Verify it's a ValueError-derived error (contains error message, not 500 exception)
+    assert isinstance(body["detail"], str)
+    assert len(body["detail"]) > 0
+
+
+def test_aggregate_bridge_missing_structure_result_returns_400(client):
+    """aggregate_bridge_grade raises ValueError when span_ratios key missing from structure_results -> HTTP 400"""
+    resp = client.post("/inspection/aggregate-bridge", json={
+        "year": 2026,
+        "structure_results": {
+            "main": {"converted_score": 2.5, "grade": "a"}
+        },
+        "span_ratios": {
+            "main": 0.8,
+            "ramp": 0.2  # 'ramp' not in structure_results
+        },
+    })
+    assert resp.status_code == 400
+    body = resp.json()
+    assert "detail" in body
+    assert "structure_results" in body["detail"]
+
+
+def test_aggregate_bridge_missing_converted_score_returns_400(client):
+    """aggregate_bridge_grade raises ValueError when converted_score missing -> HTTP 400"""
+    resp = client.post("/inspection/aggregate-bridge", json={
+        "year": 2026,
+        "structure_results": {
+            "main": {"grade": "a"}  # missing 'converted_score'
+        },
+        "span_ratios": {
+            "main": 1.0
+        },
+    })
+    assert resp.status_code == 400
+    body = resp.json()
+    assert "detail" in body
+    assert "converted_score" in body["detail"]
