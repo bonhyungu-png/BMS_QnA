@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.grading import grade_lookup
@@ -29,6 +30,13 @@ def get_searcher(year: int) -> TextSearcher:
 
 
 app = FastAPI(title="교량편 QnA API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class GradeRequest(BaseModel):

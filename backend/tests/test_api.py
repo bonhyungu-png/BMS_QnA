@@ -107,3 +107,11 @@ def test_aggregate_bridge_missing_converted_score_returns_400(client):
     body = resp.json()
     assert "detail" in body
     assert "converted_score" in body["detail"]
+
+
+def test_cors_headers_present_on_request_from_vite_dev_server(client):
+    """CORS headers are present when request includes Origin: http://localhost:5173"""
+    resp = client.get("/inspection/schema", params={"year": 2026}, headers={"Origin": "http://localhost:5173"})
+    assert resp.status_code == 200
+    assert "access-control-allow-origin" in resp.headers
+    assert resp.headers["access-control-allow-origin"] == "http://localhost:5173"
