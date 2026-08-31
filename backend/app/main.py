@@ -116,3 +116,18 @@ def api_compare(member: str, item: str, subitem: str = "", years: str = "2022,20
 @app.get("/search")
 def api_search(q: str, section: str | None = None, year: int = 2026):
     return get_searcher(year).search(q, section)
+
+
+from app.llm_config import load_config, build_llm
+from app.llm_tools import run_chat
+
+
+class ChatRequest(BaseModel):
+    message: str
+
+
+@app.post("/chat")
+def api_chat(req: ChatRequest):
+    llm = build_llm(load_config())
+    answer = run_chat(llm, req.message)
+    return {"answer": answer}

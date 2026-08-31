@@ -3,3 +3,5 @@ uvicorn[standard]
 httpx
 scikit-learn
 pytest
+langchain
+langchain-anthropic
