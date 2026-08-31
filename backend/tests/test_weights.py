@@ -87,3 +87,27 @@ def test_defect_item_disambiguates_concrete_upper_lower_blocks():
     defect_items_2026 = {r["defect_item"] for r in rows_2026}
     assert "바닥판" in defect_items_2026
     assert "바닥판/바닥판" not in defect_items_2026
+
+
+def test_duplicate_structure_type_key_preserves_both_values_via_suffix():
+    # 2026 표1.31 상부/바닥판 블록의 "라멘교 > 거더있음 (복개구조물)" 키는 한 블록
+    # 안에서 두 번 기재되며(20, 21), 원래 서로 다른 두 열이 같은 텍스트로 추출된
+    # 것으로 보인다. 두 번째 값을 버리지 않고 " (2)" 접미사로 구분해 남겨야 한다.
+    parsed = parse_kv_file(FIXTURE.read_text(encoding="utf-8"))
+    rows = parse_weight_table(parsed, year=2026, source_path=str(FIXTURE))
+    라멘교_바닥판_rows = [
+        r for r in rows
+        if r["defect_item"] == "바닥판" and r["structure_type"].startswith("라멘교 > 거더있음 (복개구조물)")
+    ]
+    assert {r["structure_type"] for r in 라멘교_바닥판_rows} == {
+        "라멘교 > 거더있음 (복개구조물)",
+        "라멘교 > 거더있음 (복개구조물) (2)",
+    }
+    assert {r["weight"] for r in 라멘교_바닥판_rows} == {20.0, 21.0}
+
+    # 회귀 확인: 중복 없는 키(거더교량 > 일반 거더교 > 일반)는 접미사 없이 그대로.
+    일반거더_rows = [
+        r for r in rows
+        if r["defect_item"] == "바닥판" and r["structure_type"].startswith("거더교량 > 일반 거더교 > 일반")
+    ]
+    assert {r["structure_type"] for r in 일반거더_rows} == {"거더교량 > 일반 거더교 > 일반"}

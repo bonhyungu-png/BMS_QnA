@@ -21,6 +21,18 @@ def _resolve_defect_item(values: list) -> str | None:
     return first
 
 
+def _parse_weight_value(raw: str) -> float | None:
+    """가중치 원문 문자열을 float으로 변환한다. '-'는 값 없음(None),
+    '2(4)' 같은 각주 표기는 괄호 앞 정수를 채택한다."""
+    raw = raw.strip()
+    if raw == "-":
+        return None
+    match = _WEIGHT_PATTERN.match(raw)
+    if match:
+        return float(match.group(1))
+    return None
+
+
 def parse_weight_table(parsed: dict, year: int, source_path: str) -> list[dict]:
     rows: list[dict] = []
     for block in parsed["blocks"]:
@@ -31,21 +43,19 @@ def parse_weight_table(parsed: dict, year: int, source_path: str) -> list[dict]:
         for key, values in block.items():
             if key in _META_KEYS:
                 continue
-            raw = values[0].strip()
-            if raw == "-":
-                weight = None
-            else:
-                match = _WEIGHT_PATTERN.match(raw)
-                if match:
-                    weight = float(match.group(1))
-                else:
-                    weight = None
-            rows.append({
-                "year": year,
-                "category": category,
-                "defect_item": defect_item,
-                "structure_type": key,
-                "weight": weight,
-                "source_path": source_path,
-            })
+            # 일부 실제 데이터(라멘교 계열 열)는 같은 구조형식 키가 한 블록 내에서
+            # 두 번 이상 기재되며, 서로 다른 가중치 값을 갖는다(원문 PDF의 서로 다른
+            # 두 열이 동일한 텍스트로 추출된 것으로 추정). 원래의 구분 라벨을 복원할
+            # 방법이 없으므로, 값을 잃지 않기 위해 2번째 이후 값은 키에 " (n)" 접미사를
+            # 붙여 별도 행으로 남긴다. 1번째 값은 기존처럼 접미사 없는 원래 키를 쓴다.
+            for idx, raw in enumerate(values):
+                structure_type = key if idx == 0 else f"{key} ({idx + 1})"
+                rows.append({
+                    "year": year,
+                    "category": category,
+                    "defect_item": defect_item,
+                    "structure_type": structure_type,
+                    "weight": _parse_weight_value(raw),
+                    "source_path": source_path,
+                })
     return rows
