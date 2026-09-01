@@ -23,15 +23,18 @@ def _get_searcher(year: int):
 _DEFAULT_YEAR = 2026
 
 
-def _year_or_default(year: int | None) -> int:
+def _year_or_default(year: int | str | None) -> int:
     # 일부 모델(특히 작은 로컬 모델)은 선택 인자를 생략하는 대신 명시적으로
-    # null을 채워 넣는다. 그러면 함수 기본값(=2026)이 아예 적용되지 않고
-    # None이 그대로 전달되어 실패하므로, 여기서 한 번 더 방어한다.
-    return year if year is not None else _DEFAULT_YEAR
+    # null이나 빈 문자열을 채워 넣는다. 그러면 함수 기본값(=2026)이 아예
+    # 적용되지 않고 그 값이 그대로 전달되어 실패하므로, 여기서 한 번 더
+    # 방어한다(2026-09-01 llama3.1:8b 실측: year=''를 반복 전송).
+    if year is None or year == "":
+        return _DEFAULT_YEAR
+    return int(year)
 
 
 @tool
-def list_criteria_tool(member_query: str = "", year: int | None = None) -> list[dict]:
+def list_criteria_tool(member_query: str = "", year: int | str | None = None) -> list[dict]:
     """grade_lookup_tool을 호출하기 전에 정확한 (member, item, subitem) 문자열을
     찾을 때 쓴다. DB에 저장된 부재/평가항목/세부항목은 지침서 원문 그대로라
     "균열1)"처럼 괄호가 붙어 있거나 "1방향 균열"처럼 접미사가 붙는 등 짐작으로는
@@ -49,7 +52,7 @@ def list_criteria_tool(member_query: str = "", year: int | None = None) -> list[
 
 @tool
 def grade_lookup_tool(
-    member: str, item: str, subitem: str | None, measures: dict[str, float], year: int | None = None,
+    member: str, item: str, subitem: str | None, measures: dict[str, float], year: int | str | None = None,
 ) -> dict:
     """부재/평가항목/세부항목과 측정값(예: 균열폭, 균열률)으로 상태평가 등급을 판정한다.
     member/item/subitem은 반드시 list_criteria_tool로 확인한 정확한 문자열을 써야 한다
@@ -67,7 +70,7 @@ def compare_years_tool(member: str, item: str, subitem: str | None, years: list[
 
 
 @tool
-def search_text_tool(query: str, section: str = "", year: int | None = None) -> list:
+def search_text_tool(query: str, section: str = "", year: int | str | None = None) -> list:
     """지침서 서술형 본문(정의, 절차, 설명)을 검색한다. 표 기반 등급판정은 grade_lookup_tool을 쓴다."""
     return _get_searcher(_year_or_default(year)).search(query, section or None)
 
