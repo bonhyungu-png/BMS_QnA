@@ -20,9 +20,41 @@ def _get_searcher(year: int):
     return get_searcher(year)
 
 
+_DEFAULT_YEAR = 2026
+
+
+def _year_or_default(year: int | None) -> int:
+    # 일부 모델(특히 작은 로컬 모델)은 선택 인자를 생략하는 대신 명시적으로
+    # null을 채워 넣는다. 그러면 함수 기본값(=2026)이 아예 적용되지 않고
+    # None이 그대로 전달되어 실패하므로, 여기서 한 번 더 방어한다.
+    return year if year is not None else _DEFAULT_YEAR
+
+
 @tool
-def grade_lookup_tool(member: str, item: str, subitem: str | None, measures: dict[str, float], year: int = 2026) -> dict:
-    """부재/평가항목/세부항목과 측정값(예: 균열폭, 균열률)으로 상태평가 등급을 판정한다."""
+def list_criteria_tool(member_query: str = "", year: int | None = None) -> list[dict]:
+    """grade_lookup_tool을 호출하기 전에 정확한 (member, item, subitem) 문자열을
+    찾을 때 쓴다. DB에 저장된 부재/평가항목/세부항목은 지침서 원문 그대로라
+    "균열1)"처럼 괄호가 붙어 있거나 "1방향 균열"처럼 접미사가 붙는 등 짐작으로는
+    맞히기 어렵다. member_query(부분 문자열, 비워두면 전체)로 후보를 찾은 뒤
+    정확한 값을 grade_lookup_tool/compare_years_tool에 그대로 복사해서 쓴다."""
+    year = _year_or_default(year)
+    with contextlib.closing(_get_conn()) as conn:
+        cur = conn.execute(
+            "SELECT DISTINCT member, item, subitem FROM criteria "
+            "WHERE year=? AND member LIKE ? ORDER BY member, item, subitem",
+            (year, f"%{member_query}%"),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+@tool
+def grade_lookup_tool(
+    member: str, item: str, subitem: str | None, measures: dict[str, float], year: int | None = None,
+) -> dict:
+    """부재/평가항목/세부항목과 측정값(예: 균열폭, 균열률)으로 상태평가 등급을 판정한다.
+    member/item/subitem은 반드시 list_criteria_tool로 확인한 정확한 문자열을 써야 한다
+    (짐작한 문자열을 넣으면 'not_found'가 반환된다)."""
+    year = _year_or_default(year)
     with contextlib.closing(_get_conn()) as conn:
         return grade_lookup(conn, member, item, subitem, measures, year)
 
@@ -35,17 +67,20 @@ def compare_years_tool(member: str, item: str, subitem: str | None, years: list[
 
 
 @tool
-def search_text_tool(query: str, section: str = "", year: int = 2026) -> list:
+def search_text_tool(query: str, section: str = "", year: int | None = None) -> list:
     """지침서 서술형 본문(정의, 절차, 설명)을 검색한다. 표 기반 등급판정은 grade_lookup_tool을 쓴다."""
-    return _get_searcher(year).search(query, section or None)
+    return _get_searcher(_year_or_default(year)).search(query, section or None)
 
 
-TOOLS = [grade_lookup_tool, compare_years_tool, search_text_tool]
+TOOLS = [list_criteria_tool, grade_lookup_tool, compare_years_tool, search_text_tool]
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}
 
 SYSTEM_PROMPT = (
     "당신은 「시설물의 안전 및 유지관리 실시 세부지침(안전점검·진단 편) 교량편」에 정통한 전문가입니다. "
     "등급 판정이나 구간 비교가 필요하면 반드시 도구를 호출하고, 직접 숫자를 비교해 등급을 판단하지 마세요. "
+    "grade_lookup_tool/compare_years_tool의 member/item/subitem은 짐작해서 채우지 말고, "
+    "정확한 값이 확실하지 않으면 먼저 list_criteria_tool로 실제 문자열을 확인한 뒤 그대로 복사해서 쓰세요 "
+    "(grade_lookup_tool이 'not_found'를 반환하면 이름을 잘못 짐작한 것이니 list_criteria_tool로 다시 확인하세요). "
     "도구가 'needs_judgment'를 반환하면 이는 정성적 판단이 필요하다는 뜻이므로 최종 등급을 단정하지 말고 "
     "후보와 근거를 제시한 뒤 점검자의 판단이 필요하다고 안내하세요. 항상 표 번호와 면수를 출처로 인용하세요."
 )

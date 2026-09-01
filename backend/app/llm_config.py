@@ -108,8 +108,12 @@ def build_llm(config: dict):
             raise ValueError(
                 "provider='ollama'를 쓰려면 pip install langchain-ollama 가 필요합니다."
             ) from e
+        # temperature=0: 실측 결과(qwen2.5:7b) 기본 temperature에서는 도구를
+        # 호출하지 않고 "~하겠습니다"라고 말로만 하고 끝내는 경우가 잦았는데,
+        # 0으로 낮추니 안정적으로 실제 tool_calls를 반환했다(2026-09-01 확인).
         return ChatOllama(
             model=config["model"],
             base_url=config.get("base_url", DEFAULT_OLLAMA_BASE_URL),
+            temperature=0,
         )
     raise ValueError(f"지원하지 않는 provider입니다: {provider}")

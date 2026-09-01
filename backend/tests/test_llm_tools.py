@@ -1,6 +1,29 @@
+from pathlib import Path
+
+import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
-from app.llm_tools import run_chat, TOOLS_BY_NAME, MAX_TOOL_ITERATIONS, TOOL_LIMIT_MESSAGE
+import app.conn as conn_module
+from app.build_db import main as build_main
+from app.llm_tools import list_criteria_tool, run_chat, TOOLS_BY_NAME, MAX_TOOL_ITERATIONS, TOOL_LIMIT_MESSAGE
+
+DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "안전점검진단_교량편"
+
+
+@pytest.fixture(scope="module")
+def real_db(tmp_path_factory, monkeypatch_module):
+    db_path = tmp_path_factory.mktemp("db") / "test.db"
+    build_main(DATA_DIR, db_path)
+    monkeypatch_module.setattr(conn_module, "DB_PATH", str(db_path))
+    yield db_path
+
+
+@pytest.fixture(scope="module")
+def monkeypatch_module():
+    from _pytest.monkeypatch import MonkeyPatch
+    mp = MonkeyPatch()
+    yield mp
+    mp.undo()
 
 
 class _FakeLLMWithTools:
@@ -205,3 +228,21 @@ def test_run_chat_embeds_system_prompt_in_human_message(monkeypatch):
     assert len(first_messages) == 1
     assert isinstance(first_messages[0], HumanMessage)
     assert "질문 내용" in first_messages[0].content
+
+
+def test_list_criteria_tool_finds_exact_strings_for_concrete_deck(real_db):
+    """list_criteria_tool은 부분 문자열로 실제 DB의 정확한 member/item/subitem을
+    찾아준다 - grade_lookup_tool이 짐작한 이름으로는 못 찾는 문제(2026-09-01
+    실측: "콘크리트 바닥판 부재"/"균열1"/"1방향" 같은 잘못된 짐작으로 계속
+    not_found가 나던 것)를 풀기 위한 도구."""
+    rows = list_criteria_tool.invoke({"member_query": "콘크리트 바닥판", "year": 2026})
+
+    assert len(rows) > 0
+    assert any(r["member"] == "콘크리트 바닥판" for r in rows)
+    matching = [r for r in rows if r["member"] == "콘크리트 바닥판" and r["item"] == "균열1)"]
+    assert any(r["subitem"] == "1방향 균열" for r in matching)
+
+
+def test_list_criteria_tool_empty_query_returns_all_members(real_db):
+    rows = list_criteria_tool.invoke({"year": 2026})
+    assert len(rows) > 0
