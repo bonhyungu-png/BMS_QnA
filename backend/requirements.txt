@@ -2,4 +2,5 @@ scikit-learn
 pytest
 langchain
 langchain-anthropic
+langchain-nvidia-ai-endpoints
 streamlit
