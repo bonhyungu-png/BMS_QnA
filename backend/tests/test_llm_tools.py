@@ -1,4 +1,4 @@
-from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from app.llm_tools import run_chat, TOOLS_BY_NAME, MAX_TOOL_ITERATIONS, TOOL_LIMIT_MESSAGE
 
@@ -120,6 +120,27 @@ def test_run_chat_handles_unknown_tool_name_gracefully(monkeypatch):
     assert answer == "죄송하지만 해당 도구를 찾을 수 없습니다."
 
 
+def test_run_chat_handles_tool_argument_validation_error_gracefully(monkeypatch):
+    """작은 로컬 모델(Ollama 등)이 스키마와 다른 타입의 인자를 채워 넣어 도구 호출이
+    pydantic ValidationError를 던져도, run_chat은 크래시하지 않고 오류를 LLM에게
+    돌려준 뒤 계속 진행해야 한다 (2026-09-01 Ollama qwen2.5:7b 실측에서 발견됨:
+    subitem에 문자열 대신 빈 dict {}를 채워 넣어 ValidationError 발생)."""
+    bad_args_response = AIMessage(
+        content="",
+        tool_calls=[{
+            "name": "grade_lookup_tool",
+            "args": {"member": "콘크리트 바닥판", "item": "균열", "subitem": {}, "measures": {}},
+            "id": "call_1",
+        }],
+    )
+    final_response = AIMessage(content="다시 시도하겠습니다.", tool_calls=[])
+
+    llm = _FakeLLM([bad_args_response, final_response])
+    answer = run_chat(llm, "콘크리트 바닥판의 균열폭 0.35mm는 몇 등급인가요?")
+
+    assert answer == "다시 시도하겠습니다."
+
+
 def test_run_chat_caps_infinite_tool_call_loop(monkeypatch):
     """모델이 tool_calls를 계속 반환해 절대 수렴하지 않아도, run_chat은 최대
     MAX_TOOL_ITERATIONS 라운드 후 안내 메시지를 반환하며 멈춰야 한다 (무한 루프 금지)."""
@@ -151,8 +172,12 @@ def test_run_chat_caps_infinite_tool_call_loop(monkeypatch):
     assert answer == TOOL_LIMIT_MESSAGE
 
 
-def test_run_chat_sends_system_prompt_as_system_message(monkeypatch):
-    """SYSTEM_PROMPT는 HumanMessage에 섞어 보내지 않고 SystemMessage로 별도 전달되어야 한다."""
+def test_run_chat_embeds_system_prompt_in_human_message(monkeypatch):
+    """SYSTEM_PROMPT는 SystemMessage로 분리하지 않고 HumanMessage에 합쳐 보내야 한다.
+
+    Ollama(qwen2.5:7b) 실측에서 SystemMessage를 쓰면 도구 정의를 주입하는 system
+    슬롯을 덮어써서 모델이 구조화된 tool_calls 대신 원문 텍스트를 흘리는 회귀가
+    발생함을 확인했다(2026-09-01). 모든 provider에 안전한 방식은 HumanMessage 결합."""
     captured_messages = {}
 
     class _CapturingBoundLLM:
@@ -177,6 +202,6 @@ def test_run_chat_sends_system_prompt_as_system_message(monkeypatch):
 
     assert answer == "답변입니다."
     first_messages = captured_messages["first"]
-    assert isinstance(first_messages[0], SystemMessage)
-    assert "질문 내용" not in first_messages[0].content
-    assert first_messages[1].content == "질문 내용"
+    assert len(first_messages) == 1
+    assert isinstance(first_messages[0], HumanMessage)
+    assert "질문 내용" in first_messages[0].content

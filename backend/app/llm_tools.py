@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 
-from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
 from app.conn import get_conn, get_searcher
@@ -56,8 +56,15 @@ TOOL_LIMIT_MESSAGE = "죄송합니다. 도구 호출 횟수 제한에 도달했�
 
 
 def run_chat(llm, message: str) -> str:
+    # SYSTEM_PROMPT를 SystemMessage로 분리하지 않고 HumanMessage에 합친다.
+    # 실측 결과 Ollama(예: qwen2.5:7b)는 도구 정의를 system 슬롯에 자체 주입하는
+    # 템플릿을 쓰는데, 여기에 커스텀 SystemMessage를 넣으면 그 슬롯을 덮어써서
+    # 모델이 구조화된 tool_calls 대신 "<tool_call>..." 원문 텍스트를 그대로
+    # content로 흘려보내는 회귀가 발생했다(2026-09-01 실측 확인). Anthropic/NVIDIA는
+    # 이 방식으로도 정상 동작하는 것을 확인했으므로, 모든 provider에 안전한
+    # HumanMessage 결합 방식으로 통일한다.
     llm_with_tools = llm.bind_tools(TOOLS)
-    messages = [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=message)]
+    messages = [HumanMessage(content=f"{SYSTEM_PROMPT}\n\n질문: {message}")]
     response = llm_with_tools.invoke(messages)
     messages.append(response)
 
@@ -69,9 +76,15 @@ def run_chat(llm, message: str) -> str:
             if call["name"] not in TOOLS_BY_NAME:
                 error_msg = f"오류: 알 수 없는 도구 '{call['name']}'"
                 messages.append(ToolMessage(content=error_msg, tool_call_id=call["id"]))
-            else:
+                continue
+            try:
                 result = TOOLS_BY_NAME[call["name"]].invoke(call["args"])
-                messages.append(ToolMessage(content=str(result), tool_call_id=call["id"]))
+                content = str(result)
+            except Exception as e:  # noqa: BLE001 - 도구 인자가 잘못된 경우(특히 작은
+                # 로컬 모델이 스키마와 다른 타입을 채워 넣는 경우) 루프 전체를 죽이는
+                # 대신 오류를 LLM에게 돌려줘서 다시 시도하거나 사용자에게 안내하게 한다.
+                content = f"오류: 도구 '{call['name']}' 실행 실패 - {e}"
+            messages.append(ToolMessage(content=content, tool_call_id=call["id"]))
         response = llm_with_tools.invoke(messages)
         messages.append(response)
         iterations += 1

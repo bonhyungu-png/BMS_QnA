@@ -8,12 +8,14 @@ import os
 from pathlib import Path
 
 API_KEY_FILE = Path(__file__).resolve().parent.parent / "api_key.txt"
+DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
 
 KEY_PREFIX_MAP = [("sk-ant-", "anthropic"), ("nvapi-", "nvidia"), ("sk-", "openai")]
 DEFAULT_MODEL_BY_PROVIDER = {
     "anthropic": "claude-opus-5",
     "nvidia": "nvidia/nemotron-3-nano-30b-a3b",
     "openai": "gpt-4o",
+    "ollama": "qwen2.5:7b",
 }
 
 
@@ -25,6 +27,16 @@ def detect_provider(key: str) -> str:
 
 
 def load_config() -> dict:
+    # ollama는 로컬(또는 터널로 노출된) 서버라 API 키가 필요 없다 -
+    # BRIDGE_QNA_PROVIDER=ollama가 설정되어 있으면 키 없이 바로 구성한다.
+    if os.environ.get("BRIDGE_QNA_PROVIDER") == "ollama":
+        return {
+            "provider": "ollama",
+            "key": None,
+            "model": os.environ.get("BRIDGE_QNA_MODEL") or DEFAULT_MODEL_BY_PROVIDER["ollama"],
+            "base_url": os.environ.get("BRIDGE_QNA_OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL),
+        }
+
     env_key = os.environ.get("BRIDGE_QNA_API_KEY")
     if env_key:
         config: dict = {
@@ -80,7 +92,7 @@ def build_llm(config: dict):
             raise ValueError(
                 "provider='nvidia'를 쓰려면 pip install langchain-nvidia-ai-endpoints 가 필요합니다."
             ) from e
-        return ChatNVIDIA(model=config["model"], api_key=config["key"], timeout=120)
+        return ChatNVIDIA(model=config["model"], api_key=config["key"], timeout=120, max_tokens=4096)
     elif provider == "openai":
         try:
             from langchain_openai import ChatOpenAI
@@ -89,4 +101,15 @@ def build_llm(config: dict):
                 "provider='openai'를 쓰려면 pip install langchain-openai 가 필요합니다."
             ) from e
         return ChatOpenAI(model=config["model"], api_key=config["key"])
+    elif provider == "ollama":
+        try:
+            from langchain_ollama import ChatOllama
+        except ImportError as e:
+            raise ValueError(
+                "provider='ollama'를 쓰려면 pip install langchain-ollama 가 필요합니다."
+            ) from e
+        return ChatOllama(
+            model=config["model"],
+            base_url=config.get("base_url", DEFAULT_OLLAMA_BASE_URL),
+        )
     raise ValueError(f"지원하지 않는 provider입니다: {provider}")

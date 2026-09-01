@@ -3,4 +3,5 @@ pytest
 langchain
 langchain-anthropic
 langchain-nvidia-ai-endpoints
+langchain-ollama
 streamlit
